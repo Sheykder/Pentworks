@@ -10,12 +10,9 @@ target = typer.Typer()
 @target.command("add")
 def add_target(address: str, description: str = ""):
     project_id = utils.require_active_project()
-    if(not project_id):
-        return
 
     if(not address.strip()):
-        print("Variable address is empty")
-        return
+        utils.fail("Variable address is empty")
 
     database.insert_target(project_id, address, description)
     print(f"Target {address} was successfully added")
@@ -24,8 +21,6 @@ def add_target(address: str, description: str = ""):
 @target.command("list")
 def list_targets():
     project_id = utils.require_active_project()
-    if(not project_id):
-        return
 
     targets_list = database.get_targets(project_id)
     if(not targets_list):
@@ -40,13 +35,10 @@ def list_targets():
 @target.command("show")
 def show_target(target_id: int):
     project_id = utils.require_active_project()
-    if(not project_id):
-        return
 
     target = database.get_target_by_id(target_id, project_id)
     if(not target):
-        print("Target not found")
-        return
+        utils.fail("Target not found")
 
     target_id, target_project_id, target_address, target_description, target_date = target
 
@@ -58,27 +50,26 @@ def show_target(target_id: int):
     
 #Delete target
 @target.command("delete")
-def delete_target(target_id: int):
+def delete_target(target_id: int, yes: bool = typer.Option(False, "--yes", "-y")):
     project_id = utils.require_active_project()
-    if(not project_id):
-        return
 
+    if not database.get_target_by_id(target_id, project_id):
+        utils.fail("Target not found")
+    utils.confirm_delete(f"target {target_id} and its associated records and files", yes)
     result = database.delete_target(target_id, project_id)
     if(not result):
-        print("No target with this id")
+        utils.fail("No target with this id")
     else:
-        print("Target was successfully deleted")
+        utils.finish_delete("Target was successfully deleted")
 
 #Set target to active
 @target.command("use")
 def use_target(target_id: int):
     project_id = utils.require_active_project()
-    if(not project_id):
-        return
 
     target = database.get_target_by_id(target_id, project_id)
     if(not target):
-        print("No target with given id")
+        utils.fail("No target with given id")
     else:
         database.set_active_target(target_id)
         print(f"Active target: {target[2]}")
@@ -87,8 +78,6 @@ def use_target(target_id: int):
 @target.command("status")
 def status_target():
     target_id = utils.require_active_target()
-    if(not target_id):
-        return
 
     project_id = utils.require_active_project()
     target = database.get_target_by_id(target_id, project_id)

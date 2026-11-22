@@ -8,3 +8,13 @@ __pycache__/
 *.sqlite3
 workspace/
 evidence/
+pentworks.db-*
+*.sqlite-*
+*.sqlite3-*
+.pentworks/
+notes/
+reports/
+.pytest_cache/
+build/
+dist/
+*.egg-info/

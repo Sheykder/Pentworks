@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pentworks"
+version = "0.1.0"
+description = "Offline command-line workspace for security assessments"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = ["typer>=0.29.2,<1", "rich>=14,<16"]
+
+[project.optional-dependencies]
+dev = ["pytest>=9,<10", "build>=1.3,<2"]
+
+[project.scripts]
+pentworks = "main:main"
+
+[tool.setuptools]
+py-modules = ["main", "database", "enums", "utils"]
+packages = ["commands", "services"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

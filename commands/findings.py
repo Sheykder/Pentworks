@@ -9,12 +9,9 @@ finding = typer.Typer()
 @finding.command("add")
 def add_finding(name: str, severity: Severity, description: str = "", endpoint: str = ""):
     target_id = utils.require_active_target()
-    if(not target_id):
-        return
 
     if(not name.strip()):
-        print("Variable name is empty")
-        return
+        utils.fail("Variable name is empty")
 
     database.insert_finding(target_id, name, severity.value, description, endpoint)
     print(f"Finding '{name}' was successfully added")
@@ -22,8 +19,6 @@ def add_finding(name: str, severity: Severity, description: str = "", endpoint: 
 @finding.command("list")
 def list_findings():
     target_id = utils.require_active_target()
-    if(not target_id):
-        return
 
     findings = database.get_findings(target_id)
 
@@ -41,14 +36,11 @@ def list_findings():
 @finding.command("show")
 def show_finding(finding_id: int):
     target_id = utils.require_active_target()
-    if (not target_id):
-        return
 
     result = database.get_finding_by_id(target_id, finding_id)
 
     if (not result):
-        print("Finding not found")
-        return
+        utils.fail("Finding not found")
 
     finding_id, target_id, name, severity, description, endpoint, status, created_at = result
 
@@ -63,28 +55,27 @@ def show_finding(finding_id: int):
 
 
 @finding.command("delete")
-def delete_finding(finding_id: int):
+def delete_finding(finding_id: int, yes: bool = typer.Option(False, "--yes", "-y")):
     target_id = utils.require_active_target()
-    if not target_id:
-        return
 
+    if not database.get_finding_by_id(target_id, finding_id):
+        utils.fail("Finding not found")
+    utils.confirm_delete(f"finding {finding_id} and its associated records and files", yes)
     result = database.delete_finding(target_id, finding_id)
 
     if result:
-        print(f"Finding {finding_id} was deleted")
+        utils.finish_delete(f"Finding {finding_id} was deleted")
     else:
-        print("Finding not found")
+        utils.fail("Finding not found")
 
 
 @finding.command("status")
 def update_status(finding_id: int, status: FindingStatus):
     target_id = utils.require_active_target()
-    if not target_id:
-        return
 
     result = database.update_finding_status(target_id, finding_id, status.value)
 
     if result:
         print(f"Finding {finding_id} status updated to {status.value}")
     else:
-        print("Finding not found")
+        utils.fail("Finding not found")

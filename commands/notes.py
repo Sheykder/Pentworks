@@ -1,21 +1,20 @@
+import sqlite3
+import subprocess
 
 import typer
+
 import database
 import utils
-from pathlib import Path
 from services import storage
 
 note = typer.Typer()
 
 def get_note(note_id: int):
     project_id = utils.require_active_project()
-    if(not project_id):
-        return None
 
     result = database.get_note_by_id(project_id, note_id)
     if(not result):
-        print("Note doesn't exist")
-        return None
+        utils.fail("Note doesn't exist")
 
     return result
 
@@ -27,39 +26,39 @@ def note_add(
     finding: int | None = typer.Option(None, "--finding")
 ):
     if(project + target + (finding is not None) != 1):
-        print("Choose exactly one note level")
-        return
+        utils.fail("Choose exactly one note level")
 
     if(not name.strip()):
-        print("Note name cannot be empty")
-        return
+        utils.fail("Note name cannot be empty")
 
     project_id = utils.require_active_project()
-    if(not project_id):
-        return
 
     target_id = None
     if(target or finding is not None):
-        target_id = utils.require_active_target()
-        if(not target_id):
-            return
+        target_id = utils.require_active_target(project_id)
 
     if(finding is not None):
         if(not database.get_finding_by_id(target_id, finding)):
-            print("Finding doesn't exist")
-            return
+            utils.fail("Finding doesn't exist")
 
-    path = storage.create_note_file(name)
+    try:
+        path = storage.create_note_file(name)
+    except OSError as exc:
+        utils.fail(f"Failed to create note file: {exc}")
 
     try:
         database.insert_note(project_id, name, path, target_id, finding)
-    except Exception as e:
+    except sqlite3.Error as e:
         try:
             storage.delete_note_file(path)
-        except OSError as cleanup_error:
-            print(f"Failed to clean up note file: {cleanup_error}")
-        print(f"Failed to create note: {e}")
-        return
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError) as cleanup_error:
+            typer.echo(f"Failed to clean up note file: {cleanup_error}", err=True)
+            database.queue_file_deletion("note", path)
+        if isinstance(e):
+            raise
+        utils.fail(f"Failed to create note: {e}")
 
     print("Note was successfully added")
 
@@ -69,23 +68,17 @@ def note_list(
     finding: int | None = typer.Option(None, "--finding")
 ):
     if(target and finding is not None):
-        print("Choose only one filter")
-        return
+        utils.fail("Choose only one filter")
 
     project_id = utils.require_active_project()
-    if(not project_id):
-        return
 
     target_id = None
     if(target or finding is not None):
-        target_id = utils.require_active_target()
-        if(not target_id):
-            return
+        target_id = utils.require_active_target(project_id)
 
     if(finding is not None):
         if(not database.get_finding_by_id(target_id, finding)):
-            print("Finding doesn't exist")
-            return
+            utils.fail("Finding doesn't exist")
 
     notes = database.get_notes(project_id, target_id, finding)
     if(not notes):
@@ -100,16 +93,13 @@ def note_list(
 @note.command("show")
 def note_show(note_id: int):
     item = get_note(note_id)
-    if(not item):
-        return
 
     note_id, project_id, target_id, finding_id, name, file_path, created_at, updated_at = item
 
     try:
         content = storage.read_note_file(file_path)
     except (OSError, ValueError) as e:
-        print(f"Failed to read note: {e}")
-        return
+        utils.fail(f"Failed to read note: {e}")
 
     print(f"ID: {note_id}")
     print(f"Name: {name}")
@@ -124,16 +114,13 @@ def note_show(note_id: int):
 @note.command("edit")
 def note_edit(note_id: int):
     item = get_note(note_id)
-    if(not item):
-        return
 
     file_path = item[5]
 
     try:
         storage.edit_note_file(file_path)
-    except (OSError, ValueError) as e:
-        print(f"Failed to edit note: {e}")
-        return
+    except (OSError, ValueError, subprocess.CalledProcessError) as e:
+        utils.fail(f"Failed to edit note: {e}")
 
     project_id = item[1]
     database.touch_note(project_id, note_id)
@@ -142,15 +129,13 @@ def note_edit(note_id: int):
 @note.command("rename")
 def note_rename(note_id: int, name: str):
     if(not name.strip()):
-        print("Note name cannot be empty")
-        return
+        utils.fail("Note name cannot be empty")
 
     item = get_note(note_id)
-    if(not item):
-        return
 
     project_id = item[1]
-    database.update_note(project_id, note_id, name)
+    if not database.update_note(project_id, note_id, name):
+        utils.fail("Note doesn't exist")
     print("Note was successfully renamed")
 
 @note.command("delete")
@@ -159,39 +144,19 @@ def note_delete(
     yes: bool = typer.Option(False, "--yes", "-y")
 ):
     item = get_note(note_id)
-    if(not item):
-        return
 
-    if(not yes):
-        confirmed = typer.confirm(f"Delete note '{item[4]}'?")
-        if(not confirmed):
-            print("Cancelled")
-            return
+    utils.confirm_delete(f"note '{item[4]}'", yes)
+    if not database.delete_note(item[1], note_id):
+        utils.fail("Note doesn't exist")
+    utils.finish_delete("Note was successfully deleted")
 
-    project_id = item[1]
-    file_path = item[5]
-
-    database.delete_note(project_id, note_id)
-
-    try:
-        storage.delete_note_file(file_path)
-    except FileNotFoundError:
-        pass
-    except (OSError, ValueError) as e:
-        print(f"Note deleted from database, but file cleanup failed: {e}")
-        return
-
-    print("Note was successfully deleted")
 
 @note.command("search")
 def note_search(query: str):
     project_id = utils.require_active_project()
-    if(not project_id):
-        return
 
     if(not query.strip()):
-        print("Search query cannot be empty")
-        return
+        utils.fail("Search query cannot be empty")
 
     notes = database.get_notes(project_id)
     matches = []
@@ -202,7 +167,7 @@ def note_search(query: str):
         try:
             content = storage.read_note_file(file_path)
         except (OSError, ValueError) as e:
-            print(f"Skipping note [{note_id}]: {e}")
+            typer.echo(f"Skipping note [{note_id}]: {e}", err=True)
             continue
 
         if(query.casefold() in name.casefold() or query.casefold() in content.casefold()):
