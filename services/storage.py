@@ -39,7 +39,7 @@ def init_storage():
 def create_note_file(name: str, content: str = ""):
     filename = f"{uuid4()}.md"
     file = NOTES_DIR / filename
-    file.write_text(f"# {name}\n\n{content}", encding="utf-8")o
+    file.write_text(f"# {name}\n\n{content}", encding="utf-8")
     return str(file.relative_to(WORKSPACE_DIR))
 
 def read_note_file(file_path: str):
